@@ -1,26 +1,24 @@
 package edu.sdccd.cisc191.game;
 
-import edu.sdccd.cisc191.subsystems.CombatSystem;
 import edu.sdccd.cisc191.subsystems.ExplorationSystem;
 import edu.sdccd.cisc191.subsystems.ResourceManagement;
-import edu.sdccd.cisc191.game.PlayerInventory;
 
-import javafx.animation.AnimationTimer; // 1 Game loop that calls handle() method
-import javafx.application.Application;  // 2 JavaFX application base class
-import javafx.scene.Scene;              // 3 Container for all content in a scene graph
-import javafx.scene.control.*;      // 4 IU control text display
-import javafx.scene.input.KeyCode;      // 5 Provides key codes to handle keyboard input
-import javafx.stage.Stage;              // 7 Top-level window
+import javafx.animation.AnimationTimer;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.stage.Stage;
 
-import javafx.scene.control.ListView;                   // 8
-import javafx.scene.layout.VBox;                        // 9
-import javafx.scene.control.Button;                     // 10
+import javafx.scene.control.ListView;
+import javafx.scene.layout.VBox;
+import javafx.scene.layout.StackPane;
+import javafx.scene.control.Button;
 
-import java.util.concurrent.Executors;                  // 11
-import java.util.concurrent.ScheduledExecutorService;   // 12
-import java.util.concurrent.TimeUnit;                   // 13
-
-
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 // Main Game Class (Integrates JavaFX, Shipyard System, and Exploration System)
 public class Game extends Application {
@@ -30,37 +28,38 @@ public class Game extends Application {
     private Player player;
     private PlayerInventory inventory;
 
-    private ListView<String> fleetListView;     // IUO List for displaying player's fleet
-    private Label statusLabel;                  // Status label
+    private ListView<String> fleetListView;
+    private Label statusLabel;
     private TextArea gameLog;
-    private ComboBox<String> planetSelector;// Field to store the current state of the game
+    private ComboBox<String> planetSelector;
     private Label resourceLabel;
 
     private GameState gameState;
 
-    public enum GameState {                     // Define an enumeration for different game states
+    public enum GameState {
         MENU, PLAYING, PAUSED, GAME_OVER
     }
 
-    public static void main(String[] args) {    // Launch the JavaFX application
+    public static void main(String[] args) {
         launch(args);
     }
 
     @Override
-    public void start (Stage primaryStage) {    // Main window
+    public void start(Stage primaryStage) {
         // Initialize game components
-        shipyard = new Shipyard();
+        player = new Player("Captain");
+        shipyard = new Shipyard(ship -> player.addShip(ship));
         explorationSystem = new ExplorationSystem();
         resourceManagement = new ResourceManagement();
         inventory = new PlayerInventory();
-        player = new Player ("Captain");
 
         gameState = GameState.MENU;
 
         // Create UI elements
         statusLabel = new Label("Welcome to Galactic Strategy! (Press ENTER to start)");
         fleetListView = new ListView<>();
-        updateFleetDisplay();   // Load fleet data
+        shipyard.buildShip("Fighter");
+        updateFleetDisplay();
 
         gameLog = new TextArea();
         gameLog.setEditable(false);
@@ -82,7 +81,7 @@ public class Game extends Application {
         Button exploreBtn = new Button("Explore Planet");
         planetSelector = new ComboBox<>();
         planetSelector.getItems().addAll("Mars", "Jupiter", "Neptune", "Alpha Centauri", "Andromeda");
-        planetSelector.setValue("Mars"); // Default selection
+        planetSelector.setValue("Mars");
 
         // Assign button actions
         buildFighterBtn.setOnAction(e -> buildShip("Fighter", 10, 5));
@@ -90,6 +89,7 @@ public class Game extends Application {
         buildBattleshipBtn.setOnAction(e -> buildShip("Battleship", 20, 10));
         upgradeShipBtn.setOnAction(e -> upgradeSelectedShip());
         exploreBtn.setOnAction(e -> exploreSelectedPlanet());
+
 
         // Layout for the UI
         VBox layout = new VBox(10);
@@ -99,26 +99,58 @@ public class Game extends Application {
                 planetSelector, exploreBtn, gameLog, resourceLabel
         );
 
-        Scene scene = new Scene(layout, 500, 600);
+        Scene scene = new Scene(layout,500, 600);
 
-        // Keyboard controls for game state changes
         scene.setOnKeyPressed(event -> handleKeyPress(event.getCode()));
 
-        primaryStage.setTitle("Galactic Strategy"); // Set Title window (Primary stage)
-        primaryStage.setScene(scene);               // Attach the scene to the primary stage
-        primaryStage.show();                        // Displays primary stage (Opens window)
+        primaryStage.setTitle("Galactic Strategy");
+        primaryStage.setScene(scene);
+        primaryStage.show();
 
         // Game loop
         AnimationTimer gameLoop = new AnimationTimer() {
             @Override
-            public void handle(long now) {  // 'now' is the current timestamp in nanoseconds
+            public void handle(long now) {
                 updateGame();
             }
         };
         gameLoop.start();
     }
 
-    // Handles keyboard input for game state management
+    // Corrected this method:
+    private boolean canUseResources(int mineralsCost, int energyCost) {
+        return inventory.getResourceAmount("Minerals") >= mineralsCost &&
+                inventory.getResourceAmount("Energy") >= energyCost;
+    }
+
+    private void buildShip(String shipType, int mineralsCost, int energyCost) {
+        if (inventory == null || !canUseResources(mineralsCost, energyCost)) {
+            statusLabel.setText("Not enough resources to build " + shipType);
+            return;
+        }
+
+        // Deduct resources once (previous code mistakenly called useResource twice)
+        boolean mineralsUsed = inventory.useResource("Minerals", mineralsCost);
+        boolean energyUsed = inventory.useResource("Energy", energyCost);
+
+        if (!mineralsUsed || !energyUsed) {
+            statusLabel.setText("Resource usage error building " + shipType);
+            return;
+        }
+
+        statusLabel.setText("Building " + shipType + "...");
+
+        shipyard.buildShip(shipType);
+
+        // Build the ship and update UI after delay - fixed parentheses and method syntax
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        executor.schedule(() -> Platform.runLater(this::updateFleetDisplay), 2, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // Update resource display immediately after resource deduction
+        resourceLabel.setText("Resources:\n" + inventory.displayResources());
+    }
+
     private void handleKeyPress(KeyCode key) {
         switch (key) {
             case ENTER:
@@ -134,45 +166,21 @@ public class Game extends Application {
         }
     }
 
-    // Updates the game based on the current game state.
     private void updateGame() {
-        // Use the switch statement to handle different game states
         switch (gameState) {
             case MENU:
-                // In the MENU state, display a prompt for the player
                 statusLabel.setText("In Menu... Press 'Enter' to play");
                 break;
             case PLAYING:
-                // in the PLAYING state, update game mechanics (e.g., move ships, process combat)
                 statusLabel.setText("Game running... Manage Fleet & Explore");
                 break;
             case PAUSED:
-                // In the PAUSED state, show that the game is paused
                 statusLabel.setText("Game Paused. Press 'P' to resume!");
                 break;
             case GAME_OVER:
-                // In the GAME_OVER state, display the game over message
                 statusLabel.setText("Game Over! Press 'ESC' to exit");
                 break;
         }
-    }
-
-    /*
-     * Builds a new shp asynchronously
-     * @param shipType The Type of ship to build
-     */
-    private void buildShip(String shipType, int mineralsCost, int energyCost) {
-        if (inventory == null || !(inventory.useResource("Minerals", mineralsCost) && !inventory.useResource("Energy", energyCost))) {
-            statusLabel.setText("Not enough resources to build " + shipType);
-            return;
-        }
-        statusLabel.setText("Building " + shipType + "...");
-        shipyard.buildShip(shipType);
-
-        // Delayed fleet update after ship construction (simulates async build)
-        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-        executor.schedule(this::updateFleetDisplay, 3, TimeUnit.SECONDS);
-        executor.shutdown();
     }
 
     private void upgradeSelectedShip() {
@@ -182,17 +190,15 @@ public class Game extends Application {
             return;
         }
 
-        // Extract only the ship name before calling upgradeShip
-        String shipName = selectedShip.split(" \\| ")[0]; // Extracts only the name
+        String shipName = selectedShip.split(" \\| ")[0]; // Extract name before upgrade
         shipyard.upgradeShip(shipName);
         updateFleetDisplay();
         statusLabel.setText(selectedShip + " upgraded!");
     }
 
-    // Updates the fleet display UI
     private void updateFleetDisplay() {
         fleetListView.getItems().clear();
-        if (shipyard == null || shipyard.getPlayerFleet() == null) return; // Prevent null error
+        if (shipyard == null || shipyard.getPlayerFleet() == null) return;
         for (GalacticShip ship : shipyard.getPlayerFleet()) {
             fleetListView.getItems().add(ship.getName() + " | HP: " + ship.getHealth() + " | ATK: " + ship.getAttackPower());
         }
@@ -200,23 +206,20 @@ public class Game extends Application {
 
     private void gatherDilithium() {
         resourceManagement.gatherResources(player, "Dilithium", inventory);
-        resourceLabel.setText("Resources:\n" + inventory.displayResources()); // Update UI
+        resourceLabel.setText("Resources:\n" + inventory.displayResources());
     }
 
-    // Handles exploring a selected planet
     private void exploreSelectedPlanet() {
         String planetName = planetSelector.getValue();
-        Planet planet = new Planet(planetName); // Create a new Planet object
+        Planet planet = new Planet(planetName);
 
         gameLog.appendText("Exploring " + planetName + "...\n");
         explorationSystem.explorePlanet(player, planet, inventory);
 
-        // Log fleet updates and resources
         updateFleetDisplay();
         resourceLabel.setText("Resources:\n" + inventory.displayResources());
     }
 
-    // Stops the shipyard's background task before closing the game
     @Override
     public void stop() {
         shipyard.shutdown();

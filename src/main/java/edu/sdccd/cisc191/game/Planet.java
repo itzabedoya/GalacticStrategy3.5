@@ -1,6 +1,8 @@
 package edu.sdccd.cisc191.game;
 
-public class Planet {
+import java.io.Serializable;
+public class Planet implements Serializable {
+    private static final long serialVersionUID = 1L;
 
     public final String mars;
 

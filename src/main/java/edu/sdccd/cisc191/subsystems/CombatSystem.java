@@ -2,8 +2,10 @@ package edu.sdccd.cisc191.subsystems;
 
 import edu.sdccd.cisc191.game.GalacticShip;
 import java.util.Random;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 
     /*
      * Features added:
@@ -17,14 +19,21 @@ import java.util.concurrent.locks.ReentrantLock;
 public class CombatSystem {
     private final Lock lock = new ReentrantLock();
     private final Random random = new Random();
+    private final ExecutorService combatExecutor = Executors.newSingleThreadExecutor();
 
     /*
      * Engages combat between two ships with turn-based mechanics
      * @param playerShip The player's ship
      * @param enemyShip The enemy ship
+     * @param onCombatEnd Callback when combat ends (can update UI)
      */
 
-    public void engageCombat(GalacticShip playerShip, GalacticShip enemyShip) {
+    public void engageCombatAsync(GalacticShip playerShip, GalacticShip enemyShip, Consumer<String> onCombatEnd) {
+
+                combatExecutor.submit(() -> engageCombat(playerShip, enemyShip, onCombatEnd));
+    }
+
+    private void engageCombat(GalacticShip playerShip, GalacticShip enemyShip, Consumer<String> onCombatEnd) {
         lock.lock();
         try {
             System.out.println("Combat Started: " + playerShip.getName() + " vs. " + enemyShip.getName());
@@ -36,23 +45,34 @@ public class CombatSystem {
                 System.out.println(playerShip.getName() + " attacks! " + enemyShip.getName() + " takes " + playerAttack + " damage. ");
 
                 if (enemyShip.isDestroyed()) {
-                    System.out.println(enemyShip.getName() + " has been destroyed!");
+                    String message = enemyShip.getName() + " has been destroyed!";
+                    System.out.println(message);
+                    if(onCombatEnd != null) onCombatEnd.accept(message);
                     break;
                 }
 
                 // Enemy Attacks
                 int enemyAttack = enemyShip.getAttackPower() + random.nextInt(5);
                 playerShip.takeDamage(enemyAttack);
-                System.out.println(enemyShip.getName() + " has been destroyed! GAME OVER!");
-            }
+                System.out.println(enemyShip.getName() + " attacks! " + playerShip.getName() + " takes " + enemyAttack + " damage.");
 
-            // Pause between turns to simulate real-time combat
-            Thread.sleep(1000);
+                if (playerShip.isDestroyed()) {
+                    String message = playerShip.getName() + " has been destroyed! GAME OVER!";
+                    System.out.println(message);
+                    if(onCombatEnd != null) onCombatEnd.accept(message);
+                    break;
+                }
+
+                Thread.sleep(1000);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
             lock.unlock();
 
         }
+    }
+    public void shutdown() {
+        combatExecutor.shutdown();
     }
 }

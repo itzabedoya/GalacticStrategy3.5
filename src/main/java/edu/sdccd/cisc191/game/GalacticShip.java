@@ -1,17 +1,24 @@
 package edu.sdccd.cisc191.game;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Represents a spaceship in the Galactic Strategy game.
  * Each ship has a name, health, attack power, and combat abilities, and can engage in combat.
  */
-public class GalacticShip {
-    private String name;
+public class GalacticShip implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private final String name;
     private int health;
-    private int attackPower;
-    private List<CombatAbility> combatAbilities;
+    private final int maxHealth;
+    private final int attackPower;
+    private final List<CombatAbility> combatAbilities;
+    private final Lock lock = new ReentrantLock();
 
     /**
      * Enum representing different combat abilities a ship can have.
@@ -34,13 +41,8 @@ public class GalacticShip {
     public GalacticShip(String name, int health, int attackPower) {
         this.name = name;
         this.health = health;
+        this.maxHealth = health;
         this.attackPower = attackPower;
-        this.combatAbilities = new ArrayList<>();
-    }
-
-    public GalacticShip(String enterprise) {
-        this.health = 0;
-        this.name = enterprise;
         this.combatAbilities = new ArrayList<>();
     }
 
@@ -49,26 +51,88 @@ public class GalacticShip {
     }
 
     public int getHealth() {
-        return health;
+        lock.lock();
+        try {
+            return health;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public int getMaxHealth() {
+        return maxHealth;
     }
 
     public int getAttackPower() {
         return attackPower;
     }
 
+    /**
+     * Reduces the ship's health by the specified damage amount.
+     * Health cannot go below zero.
+     *
+     * @param damage The amount of damage to take.
+     */
+
     public void takeDamage(int damage) {
-        this.health -= damage;
-        if (this.health < 0) {
-            this.health = 0; // health cannot go below 0
+        if (damage > 0) {
+            lock.lock();
+            try {
+                health -= damage;
+                if (health < 0) {
+                    health = 0;
+                }    // health cannot go below 0
+            } finally {
+                lock.unlock();
+            }
         }
     }
 
-    public void attack(GalacticShip target) {
-        target.takeDamage(this.attackPower);
+    /**
+     * Repairs the ship by the specified amount, up to max health.
+     *
+     * @param amount The amount of health to restore.
+     */
+
+    public void repair(int amount) {
+        if (amount > 0) {
+            lock.lock();
+            try {
+                health += amount;
+                if (health > maxHealth) {
+                    health = maxHealth;
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
     }
 
+    /**
+     * Attacks another GalacticShip, causing damage equal to this ship's attack power.
+     *
+     * @param target The ship to attack.
+     */
+
+    public void attack(GalacticShip target) {
+        if (target != null && !this.isDestroyed()) {
+            target.takeDamage(this.attackPower);
+        }
+    }
+
+    /**
+     * Returns whether this ship is destroyed (health <= 0).
+     *
+     * @return true if destroyed, false otherwise.
+     */
+
     public boolean isDestroyed() {
-        return this.health <= 0;
+        lock.lock();
+        try {
+            return health <= 0;
+        } finally {
+            lock.unlock();
+        }
     }
 
     /**
@@ -77,8 +141,15 @@ public class GalacticShip {
      * @param ability The combat ability to add.
      */
     public void addCombatAbility(CombatAbility ability) {
-        if (!combatAbilities.contains(ability)) {
-            combatAbilities.add(ability);
+        if (ability != null) {
+            lock.lock();
+            try {
+                if (!combatAbilities.contains(ability)) {
+                    combatAbilities.add(ability);
+                }
+            } finally {
+                lock.unlock();
+            }
         }
     }
 
@@ -88,7 +159,12 @@ public class GalacticShip {
      * @param ability The combat ability to remove.
      */
     public void removeCombatAbility(CombatAbility ability) {
-        combatAbilities.remove(ability);
+        lock.lock();
+        try {
+            combatAbilities.remove(ability);
+        } finally {
+            lock.unlock();
+        }
     }
 
     /**
@@ -98,7 +174,12 @@ public class GalacticShip {
      * @return true if the ship has the ability, false otherwise.
      */
     public boolean hasCombatAbility(CombatAbility ability) {
-        return combatAbilities.contains(ability);
+        lock.lock();
+        try {
+            return combatAbilities.contains(ability);
+        } finally {
+            lock.unlock();
+        }
     }
 
     /**
@@ -107,6 +188,34 @@ public class GalacticShip {
      * @return A list of the ship's combat abilities.
      */
     public List<CombatAbility> getCombatAbilities() {
-        return new ArrayList<>(combatAbilities);
+        lock.lock();
+        try {
+            return new ArrayList<>(combatAbilities);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public String toString() {
+        return String.format("%s [Health: %d/%d, Attack: %d, Abilities: %s]",
+                name, getHealth(), maxHealth, attackPower, getCombatAbilities());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof GalacticShip)) return false;
+        GalacticShip that = (GalacticShip) o;
+        return health == that.getHealth() &&
+                maxHealth == that.maxHealth &&
+                attackPower == that.attackPower &&
+                Objects.equals(name, that.name) &&
+                Objects.equals(getCombatAbilities(), that.getCombatAbilities());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, getHealth(), maxHealth, attackPower, getCombatAbilities());
     }
 }

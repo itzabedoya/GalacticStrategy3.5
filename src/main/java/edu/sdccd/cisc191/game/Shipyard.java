@@ -3,6 +3,9 @@ package edu.sdccd.cisc191.game;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
+import javafx.application.Platform;
+import edu.sdccd.cisc191.subsystems.CustomLinkedList;
 
     /*
      * Shipyard class for managing spaceship constructions and upgrades
@@ -21,15 +24,17 @@ import java.util.concurrent.*;
 
 public class Shipyard {
     private final Map<String, GalacticShip> availableShips;
-    private final List<GalacticShip> playerFleet;
+    private final CustomLinkedList<GalacticShip> playerFleet;
     private final ExecutorService shipBuilderPool;
-    private final String saveFile = "resources/ships.json"; // Stores the list of ships
+    private final String saveFile = "GalacticStrategy3/src/main/resources/galactic_game_state_csv"; // Stores the list of ships
+    private Consumer<GalacticShip> onShipBuilt; //Callback from UI
 
     // Constructs a Shipyard with predefined ship options
-    public Shipyard() {
+    public Shipyard(Consumer<GalacticShip> onShipBuilt) {
         this.availableShips = new HashMap<>();
-        this.playerFleet = new ArrayList<>();
+        this.playerFleet = new CustomLinkedList<>();
         this.shipBuilderPool = Executors.newFixedThreadPool(2); // Allows 2 ships to be built at a time
+        this.onShipBuilt = onShipBuilt;
 
         initializeShipyard();
         loadShipyardState();
@@ -46,8 +51,8 @@ public class Shipyard {
     // Displays available ships and their stats
     public void displayAvailableShips() {
         System.out.println("Available Ships:");
-        for (String key : availableShips.keySet()) {
-            GalacticShip ship = availableShips.get(key);
+        for (Map.Entry<String, GalacticShip> entry: availableShips.entrySet()) {
+            GalacticShip ship = entry.getValue();
             System.out.println("- " + ship.getName() + " | Health: " + ship.getHealth() + " | Attack: " + ship.getAttackPower());
         }
     }
@@ -62,17 +67,33 @@ public class Shipyard {
         }
 
         System.out.println("Building " + shipType + "...");
-        shipBuilderPool.submit(() -> {
+
+        Callable<GalacticShip> task = () -> {
             try {
-                Thread.sleep(2000); // Simulate shipbuilding time
+                Thread.sleep(2000);
                 GalacticShip newShip = new GalacticShip(shipType, availableShips.get(shipType).getHealth(), availableShips.get(shipType).getAttackPower());
                 synchronized (playerFleet) {
                     playerFleet.add(newShip);
                 }
-                System.out.println(shipType + " construction complete! Added to fleet.");
-                saveShipyardState(); // Save updated fleet after ship is built
+                saveShipyardState();
+                return newShip;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                throw new RuntimeException("Build interrupted for " + shipType, e);
+            }
+        };
+        Future<GalacticShip> future = shipBuilderPool.submit(task);
+
+        shipBuilderPool.submit(() -> {
+            try {
+                // Simulate shipbuilding time
+                GalacticShip builtShip = future.get();
+                System.out.println("Build complete! " + builtShip.getName());
+                if (onShipBuilt != null) {
+                    Platform.runLater(() -> onShipBuilt.accept(builtShip));
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                System.err.println("Error building ship: " + e.getMessage());
             }
         });
     }
@@ -115,13 +136,13 @@ public class Shipyard {
      * @return List of GalacticShips in the player's fleet
      */
     public List<GalacticShip> getPlayerFleet() {
-        return playerFleet;
+        return playerFleet.toList();
     }
 
     // Saves the player's fleet to a file using ObjectOutputStream
     private void saveShipyardState() {
         try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(saveFile))) {
-            out.writeObject(playerFleet);
+            out.writeObject(playerFleet.toList());
             System.out.println("Shipyard state saved.");
         } catch (IOException e) {
             System.err.println("Error saving shipyard state: " + e.getMessage());
@@ -137,7 +158,9 @@ public class Shipyard {
             List<GalacticShip> loadedFleet = (List<GalacticShip>) in.readObject();
             synchronized (playerFleet) {
                 playerFleet.clear();
-                playerFleet.addAll(loadedFleet);
+                for (GalacticShip ship : loadedFleet) {
+                    playerFleet.add(ship);
+                }
             }
             System.out.println("Shipyard state loaded.");
         } catch (IOException | ClassNotFoundException e) {
@@ -152,7 +175,9 @@ public class Shipyard {
 
     // Test the Shipyard functionality
     public static void main(String[] args) {
-        Shipyard shipyard = new Shipyard();
+        Shipyard shipyard = new Shipyard(ship -> {
+            System.out.println("Built ship: " + ship.getName());
+        });
 
         shipyard.displayAvailableShips();
         shipyard.buildShip("Fighter");

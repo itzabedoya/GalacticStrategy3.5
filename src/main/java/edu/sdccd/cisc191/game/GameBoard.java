@@ -1,6 +1,12 @@
 package edu.sdccd.cisc191.game;
 
-public class GameBoard {
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+
+public class GameBoard implements Serializable{
+    private static final long serialVersionUID = 1L;
+
     private int[][] planets; // Represents planets in the galaxy (0 = empty, other values = planet IDs)
     private int[][] resourceCosts; // Represents resource cost to traverse each cell
     private final int rows = 5;
@@ -9,6 +15,7 @@ public class GameBoard {
     public GameBoard() {
         planets = new int[rows][cols];
         resourceCosts = new int[rows][cols];
+        initializeBoard();
     }
 
     /**
@@ -32,9 +39,16 @@ public class GameBoard {
      * @param planetId The ID of the planet to place (e.g., 1, 2, 3...).
      */
     public void placePlanet(int row, int col, int planetId) {
-        planets[row][col] = planetId;
+        if (isValidCoordinate(row,col)) {
+            planets[row][col] = planetId;
+        }
     }
 
+    public void resetPlanet(int row, int col) {
+        if(isValidCoordinate(row,col)) {
+            planets[row][col] = 0;
+        }
+    }
     /**
      * Sets the resource cost for traversing a specific cell.
      *
@@ -43,7 +57,9 @@ public class GameBoard {
      * @param cost The resource cost to traverse this cell.
      */
     public void setResourceCost(int row, int col, int cost) {
-        resourceCosts[row][col] = cost;
+        if(isValidCoordinate(row, col)){
+            resourceCosts[row][col] = cost;
+        }
     }
 
     /**
@@ -54,7 +70,7 @@ public class GameBoard {
      * @return The ID of the planet (or 0 if no planet is present).
      */
     public int getPlanetId(int row, int col) {
-        return planets[row][col];
+        return isValidCoordinate(row,col) ? planets[row][col] : -1;
     }
 
     /**
@@ -65,7 +81,7 @@ public class GameBoard {
      * @return The resource cost to traverse this cell.
      */
     public int getResourceCost(int row, int col) {
-        return resourceCosts[row][col];
+        return isValidCoordinate(row,col) ? resourceCosts[row][col]: -1;
     }
 
     /**
@@ -91,19 +107,43 @@ public class GameBoard {
      */
     public void displayBoard() {
         System.out.println("Planets:");
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                System.out.print(planets[i][j] + " ");
+        for (int [] row : planets ) {
+            for (int cell : row) {
+                System.out.print(cell + " ");
             }
             System.out.println();
         }
         System.out.println("\nResource Costs:");
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                System.out.print(resourceCosts[i][j] + " ");
+        for (int[] row : resourceCosts) {
+            for (int cell : row) {
+                System.out.print(cell + " ");
             }
             System.out.println();
         }
+    }
+
+    public boolean isValidCoordinate(int row, int col) {
+        return row >= 0 && row < rows && col >= 0 && col < cols;
+    }
+
+    public List<int[]> getAllPlanets() {
+        List<int[]> List = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                if (planets[i][j] != 0) {
+                    List.add(new int[]{i, j, planets[i][j]});
+                }
+            }
+        }
+        return List;
+    }
+
+    public int [][] getBoardSnapshot(){
+        int [][] copy = new int[rows][cols];
+        for (int i = 0; i < rows; i++) {
+            System.arraycopy(planets[i], 0, copy[i], 0, cols);
+        }
+        return copy;
     }
 
     public int getCellValue(int i, int j) {
@@ -145,4 +185,77 @@ public class GameBoard {
             }
         } return board;
     }
+
+    // ===== Module 2: 2D Array Operations on Planets =====
+
+    public int getPlanetAtIndex(int row, int col) {
+        return isValidCoordinate(row, col) ? planets[row][col] : -1;
+    }
+
+    public void setPlanetAtIndex(int row, int col, int planetId) {
+        if (isValidCoordinate(row, col)) {
+            planets[row][col] = planetId;
+        }
+    }
+
+    public int[] findPlanetIndex(int planetId) {
+        for (int i = 0; i < planets.length; i++) {
+            for (int j = 0; j < planets[i].length; j++) {
+                if (planets[i][j] == planetId) {
+                    return new int[]{i, j};
+                }
+            }
+        }
+        return new int[]{-1, -1}; // Not found
+    }
+
+    public void deletePlanetAtIndex(int row, int col) {
+        if (isValidCoordinate(row, col)) {
+            planets[row][col] = 0;
+        }
+    }
+
+    public void expandBoard(int newRows, int newCols) {
+        int[][] newPlanets = new int[newRows][newCols];
+        int[][] newCosts = new int[newRows][newCols];
+        for (int i = 0; i < planets.length; i++) {
+            for (int j = 0; j < planets[i].length; j++) {
+                newPlanets[i][j] = planets[i][j];
+                newCosts[i][j] = resourceCosts[i][j];
+            }
+        }
+        this.planets = newPlanets;
+        this.resourceCosts = newCosts;
+    }
+
+    public void shrinkBoard(int newRows, int newCols) {
+        int[][] newPlanets = new int[newRows][newCols];
+        int[][] newCosts = new int[newRows][newCols];
+        for (int i = 0; i < newRows && i < planets.length; i++) {
+            for (int j = 0; j < newCols && j < planets[i].length; j++) {
+                newPlanets[i][j] = planets[i][j];
+                newCosts[i][j] = resourceCosts[i][j];
+            }
+        }
+        this.planets = newPlanets;
+        this.resourceCosts = newCosts;
+    }
+
+    public void printPlanetsAndCosts() {
+        System.out.println("Planets:");
+        for (int[] row : planets) {
+            for (int p : row) {
+                System.out.print(p + "\t");
+            }
+            System.out.println();
+        }
+        System.out.println("Resource Costs:");
+        for (int[] row : resourceCosts) {
+            for (int c : row) {
+                System.out.print(c + "\t");
+            }
+            System.out.println();
+        }
+    }
 }
+
